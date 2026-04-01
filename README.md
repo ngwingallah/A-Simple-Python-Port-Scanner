@@ -16,7 +16,7 @@ A high-performance, multi-threaded TCP port scanner written in Python. This tool
    git clone https://github.com/ngwingallah/A-Simple-Python-Port-Scanner.git
    cd A-Simple-Python-Port-Scanner
    
-2. Ensure you have Python 3.x installed:
+2. Ensure you have Python 3 installed:
     ```bash
    python3 --version
 
