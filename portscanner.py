@@ -1,5 +1,7 @@
 import sys
-import socket 
+import socket
+import csv
+import json 
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -7,53 +9,52 @@ from concurrent.futures import ThreadPoolExecutor
 def scan_port(target, port):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2) # Banners can take a second to load
-            result = s.connect_ex((target, port))
-            
-            if result == 0:
+            s.settimeout(1.5) 
+                        
+            if s.connect_ex((target, port)) == 0:
                 banner = "No banner"
                 try:
-                    # 1. Try to receive data immediately (works for SSH, FTP, SMTP)
-                    banner = s.recv(1024).decode().strip()
-                    
-                    # 2. If nothing received, try sending a generic probe (for HTTP)
-                    if not banner:
-                        s.send(b"GET / HTTP/1.1\r\nHost: " + target.encode() + b"\r\n\r\n")
-                        banner = s.recv(1024).decode().strip().split('\n')[0] # Get first line
+                    banner = s.recv(1024).decode().strip() or "Silent Service"
                 except:
-                    # If we can't grab a banner, we still know it's open
-                    banner = "Service detected (Banner protected/silent)"
+                    banner = "Protected/No Banner"
                 
-                print(f"Port {port:5}: OPEN | Banner: {banner}")
+                # Return a dictionary for easy exporting
+                return {"port": port, "status": "open", "banner": banner}
     except:
         pass
+    return None
 
 #Define a target
-if len(sys.argv) == 2:
-    #Translate hostname name to IPv4
-    try:
-        target = socket.gethostbyname(sys.argv[1])
-    except socket.gaierror:
-        print("\n Hostname could not be resolved. Exiting.")
-        sys.exit()
-else:
+if len(sys.argv) < 2:
     print("Usage: python3 portscanner.py <ip>")
     sys.exit()
 
-#Show scan info
-print("=" * 45)
-print("Scan target: " + target)
-print("Scanning started: " + str(datetime.now()))
-print("=" * 45)
+target = socket.gethostbyname(sys.argv[1])
+open_ports = []
 
-#Run the scan 
-try:
-   with ThreadPoolExecutor(max_workers=100) as executor:
-        for port in range(1, 1024):
-            executor.submit(scan_port, target, port)
+print(f"Scanning {target}...")
 
-except KeyboardInterrupt:
-    print("\n Scan has stopped")
-    sys.exit()
+#Collect results using Threading
+with ThreadPoolExecutor(max_workers=100) as executor:
+    #Submit all tasks and filter out the 'None' results (closed ports)
+    futures = [executor.submit(scan_port, target, port) for port in range(1, 1025)]
+    for f in futures:
+        res = f.result()
+        if res:
+            open_ports.append(res)
+            print(f"Found: Port {res['port']} is OPEN")
 
-print(f"\nScanning finished at: {datetime.now()}")
+#Export
+csv_file = "scan_results.csv"
+with open(csv_file, mode='w', newline='') as f:
+    writer = csv.DictWriter(f, fieldnames=["port", "status", "banner"])
+    writer.writeheader()
+    writer.writerows(open_ports)
+
+# 4. Export to JSON
+json_file = "scan_results.json"
+with open(json_file, 'w') as f:
+    json.dump(open_ports, f, indent=4)
+
+print("-" * 30)
+print(f"Scan complete. Results saved to {csv_file} and {json_file}")
